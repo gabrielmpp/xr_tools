@@ -6,6 +6,17 @@ import traceback
 import cmath
 import pandas as pd
 
+def common_index(list1, list2):
+    return [element for element in list1 if element in list2]
+
+def calc_quantiles(x, quantiles_list, iterations=50):
+    quantile_array = np.zeros(shape=[len(quantiles_list), iterations])
+    for i in range(iterations):
+        for j, q in enumerate(quantiles_list):
+            quantile_array[j, i] = np.quantile(x, q)
+
+    return np.mean(quantile_array, axis=1), np.std(quantile_array, axis=1)
+
 
 def safely_read_multiple_files(files, size_of_chunk=20, concat_dim = 'time'):
     """
