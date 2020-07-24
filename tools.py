@@ -5,9 +5,70 @@ import numpy as np
 import traceback
 import cmath
 import pandas as pd
+from skimage.feature import hessian_matrix_eigvals
+from scipy.ndimage import gaussian_filter
+
+
+def find_ridges_spherical_hessian(da, sigma=.5, scheme='first_order'):
+    """
+    Method to in spherical coordinates
+    Parameters
+    ----------
+    sigma - float, smoothing intensity
+    da - xarray.dataarray
+    scheme - str, 'first_order' for x[i+1] - x[i] and second order for x[i+1] - x[i-1]
+
+    Returns
+    -------
+
+    """
+    da = da.copy()
+    # Gaussian filter
+    da = da.copy(data=gaussian_filter(da, sigma=sigma))
+
+    # Initializing
+    earth_r = 6371000
+    x = da.longitude.copy() * np.pi/180
+    y = da.latitude.copy() * np.pi/180
+    dx = x.diff('longitude') * earth_r * np.cos(y)
+    dy = y.diff('latitude') * earth_r
+    dx_scaling = da.longitude.diff('longitude').values[0]  # grid spacing
+    dy_scaling = da.latitude.diff('latitude').values[0]  # grid spacing
+
+    # Calc derivatives
+    if scheme == 'second_order':
+        ddadx = dx_scaling * da.differentiate('longitude') / dx
+        ddady = dy_scaling * da.differentiate('latitude') / dy
+        d2dadx2 = dx_scaling * ddadx.differentiate('longitude') / dx
+        d2dadxdy = dy_scaling * ddadx.differentiate('latitude') / dy
+        d2dady2 = dx_scaling * ddady.differentiate('latitude') / dy
+        d2dadydx = d2dadxdy.copy()
+    elif scheme == 'first_order':
+        ddadx = da.diff('longitude') / dx
+        ddady = da.diff('latitude') / dy
+        d2dadx2 = ddadx.diff('longitude') / dx
+        d2dadxdy = ddadx.diff('latitude') / dy
+        d2dady2 = ddady.diff('latitude') / dy
+        d2dadydx = d2dadxdy.copy()
+    # Assembling Hessian array
+    hessian = xr.concat([d2dadx2, d2dadxdy, d2dadydx, d2dady2],
+                            dim=pd.Index(['d2dadx2', 'd2dadxdy', 'd2dadydx', 'd2dady2'],
+                                         name='elements'))
+    hessian = hessian.stack({'points': ['latitude', 'longitude']})
+    hessian = hessian.dropna('points', how='any')
+
+    # Finding norm
+    norm = hessian_matrix_eigvals([hessian.sel(elements='d2dadx2').values,
+                                   hessian.sel(elements='d2dadxdy').values,
+                                   hessian.sel(elements='d2dady2').values])
+    norm_max = hessian.isel(elements=0).drop('elements').copy(data=norm[1, :]).unstack()
+
+    return norm_max
+
 
 def common_index(list1, list2):
     return [element for element in list1 if element in list2]
+
 
 def calc_quantiles(x, quantiles_list, iterations=50):
     quantile_array = np.zeros(shape=[len(quantiles_list), iterations])
