@@ -2,18 +2,37 @@ import xarray as xr
 import glob
 import os
 import sys
+from dask.diagnostics import ProgressBar
 
-simpath = sys.argv[1]
 
-sim = simpath.split('/')[-1]
-outpath = '/group_workspaces/jasmin4/upscale/gmpp/convzones/'
-files = [f for f in glob.glob(simpath + "**/*.nc", recursive=True)]
-print(files)
-da = xr.open_mfdataset(files).to_array().isel(variable=0).drop('variable')
-# da = da.chunk({'time': 100})
-try:
-    os.makedirs(outpath + sim)
-except FileExistsError:
-    pass
+def chunks(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 
-da = da.to_netcdf(outpath + sim + '/full_array.nc')
+
+def open_and_write_files(files, nchunks, filename):
+    print("Opening files")
+    da = xr.open_mfdataset(files, chunks={'time': nchunks})
+    print(da)
+    da = da.to_array().isel(variable=0).drop('variable')
+    da.name = 'var'
+    try:
+        os.makedirs(outpath + sim)
+    except FileExistsError:
+        pass
+    print('writing')
+    with ProgressBar():
+        da.to_netcdf(outpath + sim + '/' + filename)
+
+
+if __name__ == '__main__':
+    simpath = sys.argv[1]
+    sim = simpath.split('/')[-1]
+    outpath = '/group_workspaces/jasmin4/upscale/gmpp/convzones/'
+    files = [f for f in glob.glob(simpath + "**/*.nc", recursive=True)]
+    for idx, chunk_files in enumerate(chunks(files, 600)):
+        open_and_write_files(chunk_files, nchunks=10, filename='partial_{0:03d}.nc'.format(idx))
+        print(f'Done {100 * idx*len(files)/600}%')
+
+

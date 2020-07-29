@@ -5,65 +5,38 @@ import numpy as np
 import traceback
 import cmath
 import pandas as pd
-from skimage.feature import hessian_matrix_eigvals
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import label, generate_binary_structure
+from skimage.measure import regionprops_table
 
 
-def find_ridges_spherical_hessian(da, sigma=.5, scheme='first_order'):
-    """
-    Method to in spherical coordinates
-    Parameters
-    ----------
-    sigma - float, smoothing intensity
-    da - xarray.dataarray
-    scheme - str, 'first_order' for x[i+1] - x[i] and second order for x[i+1] - x[i-1]
+def filter_ridges(ridges, ftle, criteria, thresholds):
+    s = generate_binary_structure(2, 2)  # Full connectivity
+    ridges_labels=ridges.copy(data=label(ridges, structure=s)[0])
 
-    Returns
-    -------
+    props = ['label'] + criteria
+    df = pd.DataFrame(regionprops_table(ridges_labels.values,
+                                        intensity_image=ftle.values,
+                      properties=props))
+    df = df.set_index('label')
 
-    """
-    da = da.copy()
-    # Gaussian filter
-    da = da.copy(data=gaussian_filter(da, sigma=sigma))
+    masks = []
+    for idx, criterion in enumerate(criteria):
+        da = df.to_xarray()[criterion]
+        da = da.where(da > thresholds[idx], drop=True)
+        mask = ridges_labels.copy()
+        for l in da.label.values:
+            mask = mask.where(mask != l, 1)
+        mask = mask.where(mask == 1, 0)
+        masks.append(mask)
 
-    # Initializing
-    earth_r = 6371000
-    x = da.longitude.copy() * np.pi/180
-    y = da.latitude.copy() * np.pi/180
-    dx = x.diff('longitude') * earth_r * np.cos(y)
-    dy = y.diff('latitude') * earth_r
-    dx_scaling = da.longitude.diff('longitude').values[0]  # grid spacing
-    dy_scaling = da.latitude.diff('latitude').values[0]  # grid spacing
+    mask_final = masks[0]
+    if len(masks) > 1:
+        for mask in masks[1:]:
+            mask_final = mask_final * mask
+    ridges_labels = mask_final.where(mask_final == 1)
 
-    # Calc derivatives
-    if scheme == 'second_order':
-        ddadx = dx_scaling * da.differentiate('longitude') / dx
-        ddady = dy_scaling * da.differentiate('latitude') / dy
-        d2dadx2 = dx_scaling * ddadx.differentiate('longitude') / dx
-        d2dadxdy = dy_scaling * ddadx.differentiate('latitude') / dy
-        d2dady2 = dx_scaling * ddady.differentiate('latitude') / dy
-        d2dadydx = d2dadxdy.copy()
-    elif scheme == 'first_order':
-        ddadx = da.diff('longitude') / dx
-        ddady = da.diff('latitude') / dy
-        d2dadx2 = ddadx.diff('longitude') / dx
-        d2dadxdy = ddadx.diff('latitude') / dy
-        d2dady2 = ddady.diff('latitude') / dy
-        d2dadydx = d2dadxdy.copy()
-    # Assembling Hessian array
-    hessian = xr.concat([d2dadx2, d2dadxdy, d2dadydx, d2dady2],
-                            dim=pd.Index(['d2dadx2', 'd2dadxdy', 'd2dadydx', 'd2dady2'],
-                                         name='elements'))
-    hessian = hessian.stack({'points': ['latitude', 'longitude']})
-    hessian = hessian.dropna('points', how='any')
+    return ridges_labels
 
-    # Finding norm
-    norm = hessian_matrix_eigvals([hessian.sel(elements='d2dadx2').values,
-                                   hessian.sel(elements='d2dadxdy').values,
-                                   hessian.sel(elements='d2dady2').values])
-    norm_max = hessian.isel(elements=0).drop('elements').copy(data=norm[1, :]).unstack()
-
-    return norm_max
 
 
 def common_index(list1, list2):
