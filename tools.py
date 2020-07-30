@@ -9,32 +9,80 @@ from scipy.ndimage import label, generate_binary_structure
 from skimage.measure import regionprops_table
 
 
-def filter_ridges(ridges, ftle, criteria, thresholds):
-    s = generate_binary_structure(2, 2)  # Full connectivity
-    ridges_labels=ridges.copy(data=label(ridges, structure=s)[0])
+def filter_ridges(ridges, ftle, criteria, thresholds, verbose=True):
+    """
+    Method to filter 2 or 3d arrays based on pandas regionprops
+    Parameters
+    ----------
+    ridges xr.Dataarray boolean
+    ftle xr.Dataarray floats
+    criteria list of strings with regionprops criteria
+    thresholds list of thresholds for the criteria in the same order
 
+    Returns
+    -------
+    Filtered xr.Dataarray
+    """
+    verboseprint = print if verbose else lambda *a, **k: None
+
+
+    # --- Asserting dimensions --- #
+    dims = ridges.dims
+    dims_ftle = ftle.dims
+    assert set(dims) == set(dims_ftle), 'Dims must be equal'
+    not_time_dims = set(dims).difference({'time'})
+    ftle = ftle.transpose(..., *not_time_dims)
+    ridges = ridges.transpose(..., *not_time_dims)
+
+    # --- Labelling features --- #
+    s = generate_binary_structure(2, 2)  # Full connectivity in space
+    if len(dims) == 3:
+        s = np.stack([np.zeros_like(s), s, np.zeros_like(s)])  # No connectivity in time
+    ridges_labels = ridges.copy(data=label(ridges, structure=s)[0])
+
+    # --- Measuring properties --- #
+
+    verboseprint('#----- Applying regionprops -----#')
     props = ['label'] + criteria
-    df = pd.DataFrame(regionprops_table(ridges_labels.values,
-                                        intensity_image=ftle.values,
-                      properties=props))
-    df = df.set_index('label')
+    if len(dims) < 3:
+        df = pd.DataFrame(regionprops_table(ridges_labels.values,
+                                            intensity_image=ftle.values,
+                                            properties=props))
+    else:
+        df_list = []
+        for idx, time in enumerate(ridges_labels.time.values):
+            rl = ridges_labels.sel(time=time)
+            df = pd.DataFrame(regionprops_table(rl.values,intensity_image=ftle.sel(time=time).values,properties=props))
+            verboseprint(f'done time {idx} of {ridges_labels.time.values.shape[0]}')
+            df_list.append(df)
+        df = pd.concat(df_list, axis=0)
+    df.set_index('label', inplace=True)
 
+    # --- Creating masks --- #
+
+    verboseprint('#----- Creating masks -----#')
     masks = []
     for idx, criterion in enumerate(criteria):
         da = df.to_xarray()[criterion]
         da = da.where(da > thresholds[idx], drop=True)
         mask = ridges_labels.copy()
-        for l in da.label.values:
-            mask = mask.where(mask != l, 1)
+        mask = mask.isin(da.label.values.tolist())
+        # for l in da.label.values:
+        #     mask = mask.where(mask != l, 1)
         mask = mask.where(mask == 1, 0)
         masks.append(mask)
+
+    # --- Applying masks --- #
+    verboseprint('#----- Applying masks -----#')
 
     mask_final = masks[0]
     if len(masks) > 1:
         for mask in masks[1:]:
             mask_final = mask_final * mask
-    ridges_labels = mask_final.where(mask_final == 1)
+    ridges_labels = mask_final.where(mask_final)
 
+    ridges_labels = ridges_labels.transpose(*dims)  # Returning original order
+    ftle = ftle.transpose(*dims)  # Returning to original order since it is not a deepcopy
     return ridges_labels
 
 
