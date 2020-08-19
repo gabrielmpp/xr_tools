@@ -7,6 +7,39 @@ import cmath
 import pandas as pd
 from scipy.ndimage import label, generate_binary_structure
 from skimage.measure import regionprops_table
+import bottleneck
+from scipy import stats
+
+
+def covariance_gufunc(x, y):
+    return ((x - x.mean(axis=-1, keepdims=True))
+            * (y - y.mean(axis=-1, keepdims=True))).mean(axis=-1)
+
+
+def pearson_correlation_gufunc(x, y):
+    return covariance_gufunc(x, y) / (x.std(axis=-1) * y.std(axis=-1))
+
+
+def spearman_correlation_gufunc(x, y):
+    x_ranks = bottleneck.rankdata(x, axis=-1)
+    y_ranks = bottleneck.rankdata(y, axis=-1)
+    return pearson_correlation_gufunc(x_ranks, y_ranks)
+
+
+def spearman_correlation(x, y, dim):
+    return xr.apply_ufunc(
+        spearman_correlation_gufunc, x, y,
+        input_core_dims=[[dim], [dim]],
+        dask='allowed',
+        output_dtypes=[float])
+
+
+def spearman_pvalue(x, y, dim):
+    return xr.apply_ufunc(lambda a, b: stats.spearmanr(a, b)[1], x, y,
+                          input_core_dims=[[dim], [dim]],
+                          dask='allowed',
+                          output_dtypes=[float])
+
 
 
 def filter_ridges(ridges, ftle, criteria, thresholds, verbose=True):
