@@ -26,12 +26,12 @@ def spearman_correlation_gufunc(x, y):
     return pearson_correlation_gufunc(x_ranks, y_ranks)
 
 
-def spearman_correlation(x, y, dim):
+def spearman_correlation(x, y, dim, outdtype=float):
     return xr.apply_ufunc(
         spearman_correlation_gufunc, x, y,
         input_core_dims=[[dim], [dim]],
         dask='allowed',
-        output_dtypes=[float])
+        output_dtypes=[outdtype])
 
 
 def spearman_pvalue(x, y, dim):
@@ -40,6 +40,27 @@ def spearman_pvalue(x, y, dim):
                           dask='allowed',
                           output_dtypes=[float])
 
+
+def size_in_memory(da):
+    """
+    Check xarray (dask or not) size in memory without loading
+    Parameters
+    ----------
+    da
+    -------
+
+    """
+    if da.dtype == 'float64':
+        size = 64
+    elif da.dtype == 'float32':
+        size = 32
+    else:
+        raise TypeError('array dtype not recognized.')
+
+    n_positions = np.prod(da.shape)
+    total_size = size * n_positions / (8 * 1e9)
+    print(f'Total array size is: {total_size} GB')
+    return None
 
 
 def filter_ridges(ridges, ftle, criteria, thresholds, verbose=True):
