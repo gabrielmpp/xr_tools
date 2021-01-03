@@ -27,12 +27,13 @@ def open_and_write_files(files, nchunks, filename):
 
 
 if __name__ == '__main__':
+    print(sys.argv)
     simpath = sys.argv[1]
     sim = simpath.split('/')[-1]
     outpath = '/group_workspaces/jasmin4/upscale/gmpp/convzones/'
-    files = [f for f in glob.glob(simpath + "**/*.nc", recursive=True)]
+    files = [f for f in glob.glob(simpath + "**/SL_*.nc", recursive=True)]
     for idx, chunk_files in enumerate(chunks(files, 600)):
-        open_and_write_files(chunk_files, nchunks=10, filename='partial_{0:03d}.nc'.format(idx))
+        open_and_write_files(chunk_files, nchunks=600, filename='partial_{0:03d}.nc'.format(idx))
         print(f'Done {100 * idx*len(files)/600}%')
 
 
