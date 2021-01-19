@@ -140,7 +140,6 @@ def filter_ridges(ridges, ftle, criteria, thresholds, verbose=True):
     return ridges_labels
 
 
-
 def common_index(list1, list2):
     return [element for element in list1 if element in list2]
 
@@ -276,6 +275,9 @@ def createDomains(region, reverseLat=False):
     elif region == "NEBR":
         # domain = dict(latitude=[-15, 5], longitude=[-45, -15])
         domain = dict(latitude=[-10, 5], longitude=[-55, -40])
+    elif region == 'SA':
+        domain = dict(latitude=[-45, 15], longitude=[-90, -20])
+
     elif region is None:
         domain = dict(latitude=[None, None], longitude=[None, None])
     else:
@@ -315,8 +317,7 @@ def read_nc_files(region=None,
 
     def transform(x, binary_mask):
         if transformLon:
-            x.coords[lonName].values = \
-                (x.coords[lonName].values + 180) % 360 - 180
+            x = x.assign_coords(**{lonName: (x[lonName].values + 180) % 360 - 180})
         if not isinstance(region, (type(None), dict)):
             x = x.sel(createDomains(region, reverseLat))
         elif isinstance(region, type(dict)):
