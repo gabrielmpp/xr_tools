@@ -9,8 +9,9 @@ from scipy.ndimage import label, generate_binary_structure
 from skimage.measure import regionprops_table
 import bottleneck
 from scipy import stats
-
-
+import requests
+from subprocess import call
+import os
 def covariance_gufunc(x, y):
     return ((x - x.mean(axis=-1, keepdims=True))
             * (y - y.mean(axis=-1, keepdims=True))).mean(axis=-1)
@@ -152,6 +153,30 @@ def calc_quantiles(x, quantiles_list, iterations=50):
 
     return np.mean(quantile_array, axis=1), np.std(quantile_array, axis=1)
 
+def exists(URL):
+    r = requests.head(URL)
+    return r.status_code == requests.codes.ok
+
+
+def download_and_sanitize(URL):
+    columns_to_select = ['year', 'month', 'day', 'RMM1', 'RMM2', 'phase', 'amplitude']
+    assert exists(URL), 'Path does not exist'
+    call(["curl", "-s", "-o", 'temp.txt', URL], stdout=open(os.devnull, 'wb'))
+    df = pd.read_csv('temp.txt', skiprows=1, delim_whitespace=True)
+    call(['rm', 'temp.txt'])
+    new_columns = []
+    for idx, column in enumerate(df.columns):
+        new_columns.append(column.replace(',', '').replace('.', ''))
+    df.columns = pd.Index(new_columns)
+    df = df[columns_to_select]
+    df['time'] = pd.to_datetime(df[['year', 'month', 'day']])
+    df = df.drop(['year', 'month','day'], axis=1)
+    df = df.set_index('time')
+    ds = df.to_xarray()
+    ds = ds.where(ds < 1e10)
+    ds = ds.where(ds != 999)
+    return ds
+
 
 def safely_read_multiple_files(files, size_of_chunk=20, concat_dim = 'time'):
     """
@@ -276,7 +301,7 @@ def createDomains(region, reverseLat=False):
         # domain = dict(latitude=[-15, 5], longitude=[-45, -15])
         domain = dict(latitude=[-10, 5], longitude=[-55, -40])
     elif region == 'SA':
-        domain = dict(latitude=[-45, 15], longitude=[-90, -20])
+        domain = dict(latitude=[-45, 25], longitude=[-90, -20])
 
     elif region is None:
         domain = dict(latitude=[None, None], longitude=[None, None])
