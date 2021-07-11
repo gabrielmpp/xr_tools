@@ -12,6 +12,8 @@ from scipy import stats
 import requests
 from subprocess import call
 import os
+from urllib.parse import urlparse
+
 def covariance_gufunc(x, y):
     return ((x - x.mean(axis=-1, keepdims=True))
             * (y - y.mean(axis=-1, keepdims=True))).mean(axis=-1)
@@ -158,20 +160,49 @@ def exists(URL):
     return r.status_code == requests.codes.ok
 
 
-def download_and_sanitize(URL):
-    columns_to_select = ['year', 'month', 'day', 'RMM1', 'RMM2', 'phase', 'amplitude']
-    assert exists(URL), 'Path does not exist'
-    call(["curl", "-s", "-o", 'temp.txt', URL], stdout=open(os.devnull, 'wb'))
-    df = pd.read_csv('temp.txt', skiprows=1, delim_whitespace=True)
-    call(['rm', 'temp.txt'])
-    new_columns = []
-    for idx, column in enumerate(df.columns):
-        new_columns.append(column.replace(',', '').replace('.', ''))
-    df.columns = pd.Index(new_columns)
-    df = df[columns_to_select]
-    df['time'] = pd.to_datetime(df[['year', 'month', 'day']])
-    df = df.drop(['year', 'month','day'], axis=1)
-    df = df.set_index('time')
+
+def is_url(url):
+  try:
+    result = urlparse(url)
+    return all([result.scheme, result.netloc])
+  except ValueError:
+    return False
+
+def download_and_sanitize(URL=None):
+
+    bom =True
+    if bom:
+        if URL is None:
+            # URL = 'http://www.bom.gov.au/climate/mjo/graphics/rmm.74toRealtime.txt'  # BOM Website
+            URL = 'https://meteorologia.unifei.edu.br/teleconexoes/cache/mjo.txt'  # BOM Website
+        columns_to_select = ['year', 'month', 'day', 'RMM1', 'RMM2', 'phase', 'amplitude']
+        assert is_url(URL), 'Path does not exist'
+        # call(["wget", "--user-agent=Mozilla", "-O", 'temp.txt', URL], stdout=open(os.devnull, 'wb'))
+        call(["curl", "-k", "-s", "-o", 'temp.txt', URL], stdout=open(os.devnull, 'wb'))
+        df = pd.read_csv('temp.txt', skiprows=1, delim_whitespace=True) # REad bom
+
+        call(['rm', 'temp.txt'])
+        new_columns = []
+        for idx, column in enumerate(df.columns):
+            new_columns.append(column.replace(',', '').replace('.', ''))
+        df.columns = pd.Index(new_columns)
+        df = df[columns_to_select]
+        df['time'] = pd.to_datetime(df[['year', 'month', 'day']])
+        df = df.drop(['year', 'month', 'day'], axis=1)
+        df = df.set_index('time')
+
+    else:
+        URL = 'https://psl.noaa.gov/mjo/mjoindex/vpm.1x.txt'  # NOAA
+        assert is_url(URL), 'Path does not exist'
+        call(["curl", "-s", "-o", 'temp.txt', URL], stdout=open(os.devnull, 'wb'))
+        df = pd.read_csv('temp.txt', header=None, delim_whitespace=True)  # REad bom
+        df.columns =['year', 'month', 'day','hour', 'RMM1', 'RMM2','amplitude']
+        df['time'] = pd.to_datetime(df[['year', 'month', 'day','hour']])
+
+        df = df.set_index('time')
+        df = df.loc[:,['RMM1','RMM2']]
+        call(['rm', 'temp.txt'])
+
     ds = df.to_xarray()
     ds = ds.where(ds < 1e10)
     ds = ds.where(ds != 999)
