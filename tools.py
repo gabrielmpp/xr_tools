@@ -13,6 +13,33 @@ import requests
 from subprocess import call
 import os
 from urllib.parse import urlparse
+import xesmf as xe
+
+def apply_regrid(ds, method='conservative', grid_spacing=[5, 5],
+                 latname='latitude', lonname='longitude'):
+    ds = ds.copy()
+    ds = ds.sortby(lonname).sortby(latname)
+    lon0_b = ds[lonname].values[0]
+    lon1_b = ds[lonname].values[-1]
+    dlon = grid_spacing[0]
+    lat0_b = ds[latname].values[0]
+    lat1_b = ds[latname].values[-1]
+    dlat = grid_spacing[1]
+    ds_out = xe.util.grid_2d(lon0_b, lon1_b, dlon, lat0_b, lat1_b, dlat)
+    if not isinstance(ds, xr.Dataset):
+        is_array = True
+        ds = ds.to_dataset()
+    else:
+        is_array = False
+
+    regridder = xe.Regridder(ds, ds_out, method=method)
+    ds_regridded = regridder(ds)
+    ds_regridded = ds_regridded.assign_coords(x=ds_out['lon'].values[0, :],
+                                       y=ds_out['lat'].values[:, 0]).rename(x=lonname, y=latname)
+    if is_array:
+        ds_regridded = ds_regridded.to_array().isel(variable=0).drop('variable')
+    return ds_regridded
+
 
 def covariance_gufunc(x, y):
     return ((x - x.mean(axis=-1, keepdims=True))
