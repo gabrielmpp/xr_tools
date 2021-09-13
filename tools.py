@@ -284,13 +284,14 @@ def safely_read_multiple_files(files, size_of_chunk=20, concat_dim = 'time'):
 
     return xr.concat(chunked_array_list, dim=concat_dim)
 
-def safely_read_multiple_files_dask(files, size_of_chunk=20, concat_dim = 'time'):
+
+def safely_read_multiple_files_dask(files, size_of_chunk_in=20, size_of_chunk_out=20, concat_dim='time'):
     """
     Method to read multiple netcdfs and concat along one dimension
     Parameters
     ----------
     files List of paths
-    size_of_chunk Integer - number of files to concatenate at a time
+    size_of_chunk_out Integer - number of files to concatenate at a time
     concat_dim String
 
     Returns concatenated xr.dataarray
@@ -317,9 +318,9 @@ def safely_read_multiple_files_dask(files, size_of_chunk=20, concat_dim = 'time'
     chunked_array_list = []
     for i, file in enumerate(files):
         print('Reading file ' + str(i))
-        array_list.append(xr.open_dataarray(file, chunks={'time': size_of_chunk}))
+        array_list.append(xr.open_dataarray(file, chunks={'time': size_of_chunk_in}))
 
-        if i % size_of_chunk == 0:
+        if i % size_of_chunk_out == 0:
             if psutil_available:
                 print('Process using ' + str(round(p.memory_percent(), 2)) + '% of the total system memory.')
             print(('Number of active threads: ' + str(threading.active_count())))
