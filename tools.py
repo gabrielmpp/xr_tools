@@ -12,6 +12,7 @@ from scipy import stats
 import requests
 from subprocess import call
 import os
+import warnings
 from urllib.parse import urlparse
 import xesmf as xe
 
@@ -285,7 +286,8 @@ def safely_read_multiple_files(files, size_of_chunk=20, concat_dim = 'time'):
     return xr.concat(chunked_array_list, dim=concat_dim)
 
 
-def safely_read_multiple_files_dask(files, size_of_chunk_in=20, size_of_chunk_out=20, concat_dim='time'):
+def safely_read_multiple_files_dask(files, size_of_chunk_in=20, size_of_chunk_out=20, concat_dim='time',
+                                    concat_trajs=False, convert_time=False):
     """
     Method to read multiple netcdfs and concat along one dimension
     Parameters
@@ -300,6 +302,7 @@ def safely_read_multiple_files_dask(files, size_of_chunk_in=20, size_of_chunk_ou
     """
 
     import gc
+    import pdb
     import threading
     try:
         import psutil
@@ -307,8 +310,8 @@ def safely_read_multiple_files_dask(files, size_of_chunk_in=20, size_of_chunk_ou
         psutil_available = False
     else:
         psutil_available = True
-
-
+    def convert_date(x):
+        return pd.Timestamp(str(x))
     print(('Number of active threads: ' + str(threading.active_count())))
     if psutil_available:
         p = psutil.Process()
@@ -318,18 +321,34 @@ def safely_read_multiple_files_dask(files, size_of_chunk_in=20, size_of_chunk_ou
     chunked_array_list = []
     for i, file in enumerate(files):
         print('Reading file ' + str(i))
-        array_list.append(xr.open_dataarray(file, chunks={'time': size_of_chunk_in}))
+        try:
+            da_temp = xr.open_dataarray(file, chunks={'time': size_of_chunk_in})
+            if concat_trajs:
+                warnings.warn('For now assuming that files that have time dimension are backtrajectories. \n'
+                              'This needs to be fixed for a more general usage') # TODO
+                da_temp = da_temp.rename({concat_dim: 'trajectory_time'})
+                da_temp = da_temp.assign_coords({concat_dim: da_temp.trajectory_time.values[-1]})
+                da_temp = da_temp.expand_dims(concat_dim)
+                da_temp = da_temp.assign_coords(trajectory_time=np.arange(0, da_temp.trajectory_time.values.shape[0]))
+            if convert_time:
+                da_temp = da_temp.assign_coords(time=[convert_date(x) for x in da_temp.time.values])
+            array_list.append(da_temp)
 
-        if i % size_of_chunk_out == 0:
-            if psutil_available:
-                print('Process using ' + str(round(p.memory_percent(), 2)) + '% of the total system memory.')
-            print(('Number of active threads: ' + str(threading.active_count())))
-            chunked_array_list.append(
-                xr.concat(array_list, dim=concat_dim)
-            )
-            [file.close() for file in array_list]  # closing all handles
-            array_list = []  #  resetting array
-            gc.collect()
+
+        except (OSError, ValueError):
+            print('Reading file ' + str(i) + ' failed')
+        else:
+            if (i % size_of_chunk_out == 0) or (i == (len(files)-1)):
+                if psutil_available:
+                    print('Process using ' + str(round(p.memory_percent(), 2)) + '% of the total system memory.')
+                print(('Number of active threads: ' + str(threading.active_count())))
+
+                chunked_array_list.append(
+                    xr.concat(array_list, dim=concat_dim, coords='minimal', compat='override')
+                )
+                [file.close() for file in array_list]  # closing all handles
+                array_list = []  #  resetting array
+                gc.collect()
 
     return xr.concat(chunked_array_list, dim=concat_dim)
 
