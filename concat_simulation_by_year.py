@@ -1,7 +1,6 @@
 """
 Script to merge FTLE simulations
 """
-import xarray as xr
 import glob
 import os
 from xr_tools.tools import safely_read_multiple_files_dask
@@ -9,6 +8,9 @@ import logging
 import dateutil.parser as dparser
 from joblib import Parallel, delayed
 import sys
+from dask.diagnostics import ProgressBar
+import pandas as pd
+import numpy as np
 
 def scan_folder(parent):
     # iterate over all the files in directory 'parent'
@@ -46,8 +48,11 @@ def merge_files(dir_sim):
         os.makedirs(dir_sim + '/final/')
     all_files = glob.glob(dir_sim + '/*.nc')
     all_files.sort()
-    starting_year = dparser.parse(all_files[0].split('/')[-1], fuzzy=True).year
-    final_year = dparser.parse(all_files[-1].split('/')[-1], fuzzy=True).year
+
+    # expected filename f1950-01-01T00:00:00.000000000.nc
+    starting_year = dparser.parse(all_files[0].split('/')[-1].replace('f', '').split('T')[0], fuzzy=True).year
+    final_year = dparser.parse(all_files[-1].split('/')[-1].replace('f', '').split('T')[0], fuzzy=True).year
+
     assert starting_year < final_year, 'Starting year larger than final year.'
     assert 1980 < starting_year < final_year < 2021, 'Years not in realistic interval'
     for year in range(starting_year, final_year + 1):
@@ -57,17 +62,16 @@ def merge_files(dir_sim):
             ds_year = safely_read_multiple_files_dask(files_of_year, size_of_chunk_in=1, size_of_chunk_out=200,
                                                       convert_time=True)
 
-            from dask.diagnostics import ProgressBar
-            import pandas as pd
-            import numpy as np
+
             full_times = pd.date_range(start=pd.Timestamp(str(year) + '-01-01'),
                                        end=pd.Timestamp(str(year + 1) + '-01-01'), freq='6H')
             _, index = np.unique(ds_year['time'].values, return_index=True)
             ds_year = ds_year.isel(time=index)
             ds_year = ds_year.assign_coords(time=[pd.Timestamp(x) for x in ds_year.time.values])
             ds_year = ds_year.reindex(time=full_times)
-            ds_year = ds_year.drop('forecast_period')
-            ds_year = ds_year.drop('forecast_reference_time')
+            if sim_type == 'upscale':
+                ds_year = ds_year.drop('forecast_period')
+                ds_year = ds_year.drop('forecast_reference_time')
 
             with ProgressBar():
                 ds_year = ds_year.load(num_workers=7)
@@ -76,17 +80,22 @@ def merge_files(dir_sim):
             logging.error(f'Failed {year} with error: \n {full_stack_error()} \n \n')
 
 
+sim_type = 'cmip6'
 dirs_with_nc = []
 model1 = sys.argv[1]
 models = [model1]
 logging.basicConfig(filename=f'/home/users/gmpp/phdscripts/xr_tools/concat_{model1}.log', level=logging.INFO)
 
 variable = 'FTLE'
-basepath = '/gws/nopw/j04/upscale/gmpp/convzones/'
+if sim_type == 'upscale':
+    basepath = '/gws/nopw/j04/upscale/gmpp/convzones/'
+elif sim_type == 'cmip6':
+    basepath = '/work/xfc/vol4/user_cache/gmpp/'
+
 for model in models:
     scan_folder(basepath + model)
+
 [dirs_with_nc.remove(d) for d in dirs_with_nc if 'final' in d]
 ncores = len(dirs_with_nc)
 print(f'Using {ncores} processors.')
-dir_sim = dirs_with_nc[0]
 results = Parallel(n_jobs=ncores)(delayed(merge_files)(dir_sim) for dir_sim in dirs_with_nc)
