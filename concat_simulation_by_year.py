@@ -54,8 +54,9 @@ def merge_files(dir_sim):
     final_year = dparser.parse(all_files[-1].split('/')[-1].replace('f', '').split('T')[0], fuzzy=True).year
 
     assert starting_year < final_year, 'Starting year larger than final year.'
-    assert 1980 < starting_year < final_year < 2021, 'Years not in realistic interval'
+    assert 1900 < starting_year < final_year < 2200, 'Years not in expected interval'
     for year in range(starting_year, final_year + 1):
+        logging.info(f'\n RUNNING YEAR {str(year)} \n ')
         try:
 
             files_of_year = [f for f in all_files if str(year) in f]
@@ -76,26 +77,29 @@ def merge_files(dir_sim):
             with ProgressBar():
                 ds_year = ds_year.load(num_workers=7)
             ds_year.to_netcdf(dir_sim + '/final/' + f'{year}_{variable}.nc')
+            ds_year.close()
         except:
             logging.error(f'Failed {year} with error: \n {full_stack_error()} \n \n')
 
 
-sim_type = 'cmip6'
-dirs_with_nc = []
-model1 = sys.argv[1]
-models = [model1]
-logging.basicConfig(filename=f'/home/users/gmpp/phdscripts/xr_tools/concat_{model1}.log', level=logging.INFO)
+if __name__ == '__main__':
 
-variable = 'FTLE'
-if sim_type == 'upscale':
-    basepath = '/gws/nopw/j04/upscale/gmpp/convzones/'
-elif sim_type == 'cmip6':
-    basepath = '/work/xfc/vol4/user_cache/gmpp/'
+    sim_type = 'cmip6'
+    dirs_with_nc = []
+    model1 = sys.argv[1]
+    models = [model1]
+    logging.basicConfig(filename=f'/home/users/gmpp/logs_concat/{model1}.log', level=logging.INFO)
 
-for model in models:
-    scan_folder(basepath + model)
+    variable = 'FTLE'
+    if sim_type == 'upscale':
+        basepath = '/gws/nopw/j04/upscale/gmpp/convzones/'
+    elif sim_type == 'cmip6':
+        basepath = '/work/xfc/vol4/user_cache/gmpp/'
 
-[dirs_with_nc.remove(d) for d in dirs_with_nc if 'final' in d]
-ncores = len(dirs_with_nc)
-print(f'Using {ncores} processors.')
-results = Parallel(n_jobs=ncores)(delayed(merge_files)(dir_sim) for dir_sim in dirs_with_nc)
+    for model in models:
+        scan_folder(basepath + model)
+
+    [dirs_with_nc.remove(d) for d in dirs_with_nc if ('final' in d) or ('old' in d)]
+    ncores = len(dirs_with_nc)
+    print(f'Using {ncores} processors.')
+    results = Parallel(n_jobs=ncores)(delayed(merge_files)(dir_sim) for dir_sim in dirs_with_nc)
