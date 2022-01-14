@@ -19,6 +19,8 @@ import xesmf as xe
 def apply_regrid(ds, method='conservative', grid_spacing=[5, 5],
                  latname='latitude', lonname='longitude'):
     ds = ds.copy()
+    if ds.name is None:
+        ds.name = 'placeholder_name'
     ds = ds.sortby(lonname).sortby(latname)
     lon0_b = ds[lonname].values[0]
     lon1_b = ds[lonname].values[-1]
