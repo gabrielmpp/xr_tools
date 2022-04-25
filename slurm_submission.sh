@@ -6,4 +6,4 @@
 #SBATCH -t 48:00:00
 #SBATCH --mem 20000
 
-/home/users/gmpp/miniconda2/envs/phd37/bin/python /home/users/gmpp/phdscripts/xr_tools/CMIP6/concat_simulation_by_year.py $simulation
+/home/users/gmpp/miniconda2/envs/phd37/bin/python /home/users/gmpp/phdscripts/xr_tools/concat_simulation_by_year.py $simulation

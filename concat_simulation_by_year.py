@@ -12,6 +12,7 @@ from dask.diagnostics import ProgressBar
 import pandas as pd
 import numpy as np
 
+
 def scan_folder(parent):
     # iterate over all the files in directory 'parent'
     found_file=0
@@ -27,6 +28,7 @@ def scan_folder(parent):
     if found_file == 1:
         dirs_with_nc.append(parent)
 
+
 def full_stack_error():
     import traceback, sys
     exc = sys.exc_info()[0]
@@ -39,6 +41,7 @@ def full_stack_error():
     if exc is not None:
          stackstr += '  ' + traceback.format_exc().lstrip(trc)
     return stackstr
+
 
 def merge_files(dir_sim):
     try:

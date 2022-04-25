@@ -17,8 +17,9 @@ from urllib.parse import urlparse
 import xesmf as xe
 
 def apply_regrid(ds, method='conservative', grid_spacing=[5, 5],
-                 latname='latitude', lonname='longitude'):
-    ds = ds.copy()
+                 latname='latitude', lonname='longitude', copy=True):
+    if copy:
+        ds = ds.copy()
     if ds.name is None:
         ds.name = 'placeholder_name'
     ds = ds.sortby(lonname).sortby(latname)
