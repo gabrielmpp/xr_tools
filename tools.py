@@ -15,6 +15,56 @@ import os
 import warnings
 from urllib.parse import urlparse
 import xesmf as xe
+from warnings import warn
+
+
+def regrid_ds1_on_ds2(ds1, ds2, method='conservative',
+                 latname='latitude', lonname='longitude', copy=True):
+    if copy:
+        ds1 = ds1.copy()
+        ds2 = ds2.copy()
+    if ds1.name is None:
+        ds1.name = 'ds1'
+    if ds2.name is None:
+        ds2.name = 'ds2'
+
+    ds1 = ds1.sortby(lonname).sortby(latname)
+    ds2 = ds2.sortby(lonname).sortby(latname)
+    lon0_b = ds2[lonname].values[0]
+    lon1_b = ds2[lonname].values[-1]
+    dlon = ds2[lonname].diff(lonname).values[0]
+    lat0_b = ds2[latname].values[0]
+    lat1_b = ds2[latname].values[-1]
+    dlat = ds2[latname].diff(latname).values[0]
+    ds_out = xe.util.grid_2d(lon0_b, lon1_b, dlon, lat0_b, lat1_b, dlat)
+    if not isinstance(ds1, xr.Dataset):
+        is_array = True
+        ds1 = ds1.to_dataset()
+    else:
+        is_array = False
+
+    regridder = xe.Regridder(ds1, ds_out, method=method)
+    ds_regridded = regridder(ds1)
+    ds_regridded = ds_regridded.assign_coords(x=ds_out['lon'].values[0, :],
+                                       y=ds_out['lat'].values[:, 0]).rename(x=lonname, y=latname)
+    if is_array:
+        ds_regridded = ds_regridded.to_array().isel(variable=0).drop('variable')
+
+    try:
+        xr.testing.assert_allclose(ds_regridded[latname], ds2[latname])
+        xr.testing.assert_allclose(ds_regridded[lonname], ds2[lonname])
+    except AssertionError:
+        warn('Regridded coords are not the same, probably because ds2 boundaries are outside ds2. \n'
+             'This method does not extrapolate. I will reindex instead.')
+        ds_regridded = ds_regridded.reindex({latname: ds2[latname],
+                                             lonname: ds2[lonname]}, method='nearest')
+    if latname != 'lat':
+        ds_regridded = ds_regridded.drop('lat')
+    if lonname != 'lon':
+        ds_regridded = ds_regridded.drop('lon')
+
+    return ds_regridded
+
 
 def apply_regrid(ds, method='conservative', grid_spacing=[5, 5],
                  latname='latitude', lonname='longitude', copy=True):
