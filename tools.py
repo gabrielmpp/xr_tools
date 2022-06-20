@@ -80,6 +80,49 @@ def regrid_ds1_on_ds2(ds1, ds2, method='conservative',
     return ds_regridded
 
 
+def calc_MLT(ds_obs, ds_model=None, freq_seqsonality = 'M') -> object:
+    """
+    Return array of the same size of obs
+
+    Function that returns the "MLT" precitions. I.e., given a model dataset and an observation dataset,
+    this function will return a prediction dataset based on the historical mean of each month
+
+    :param ds_model: required dims: 'time', 'seq'
+    :param ds_obs: required dims: 'time'
+    :return: ds_clim_pred
+    """
+    if ds_model is None:
+        ds_model = ds_obs.copy()
+
+    if freq_seqsonality == 'M':
+        t = 'time.month'
+    elif freq_seqsonality == 'W':
+        t = 'time.week'
+    elif freq_seqsonality == 'D':
+        raise NotImplementedError('please choose another frequency, their is not enough sample for each day of the year to have a smooth climatology')
+
+        # t= 'time.dayofyear'
+
+    history_obs_monthly = ds_obs.groupby(t).mean('time')
+
+    history_groups = []
+    for month_idx, ds_history_month in list(ds_model.groupby(t)):
+
+        if freq_seqsonality=='M':
+            ds_temp = history_obs_monthly.sel(month=month_idx).drop('month') * xr.ones_like(ds_history_month)
+        elif freq_seqsonality =='W':
+            ds_temp = history_obs_monthly.sel(week=month_idx).drop('week') * xr.ones_like(ds_history_month)
+        elif freq_seqsonality == 'D':
+            ds_temp = history_obs_monthly.sel(dayofyear=month_idx).drop('dayofyear') * xr.ones_like(ds_history_month)
+
+        history_groups.append(ds_temp)
+
+    ds_mlt = xr.concat(history_groups, dim='time')
+    ds_mlt = ds_mlt.sortby('time')
+
+    return ds_mlt
+
+
 def apply_regrid(ds, method='conservative', grid_spacing=[5, 5],
                  latname='latitude', lonname='longitude', copy=True):
     if copy:
@@ -158,6 +201,7 @@ def size_in_memory(da):
     n_positions = np.prod(da.shape)
     total_size = size * n_positions / (8 * 1e9)
     print(f'Total array size is: {total_size} GB')
+
     return None
 
 
