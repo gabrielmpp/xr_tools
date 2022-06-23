@@ -195,6 +195,9 @@ def size_in_memory(da):
         size = 64
     elif da.dtype == 'float32':
         size = 32
+    elif da.dtype == 'float16':
+        size = 16
+
     else:
         raise TypeError('array dtype not recognized.')
 
