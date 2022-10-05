@@ -61,6 +61,8 @@ def regrid_ds1_on_ds2(ds1, ds2, method='conservative',
     ds_regridded = regridder(ds1)
     ds_regridded = ds_regridded.assign_coords(x=ds_out['lon'].values[0, :],
                                        y=ds_out['lat'].values[:, 0]).rename(x=lonname, y=latname)
+    # if lonname == 'longitude':
+    #     ds_regridded = ds_regridded.drop(['lon', 'lat'])
     if is_array:
         ds_regridded = ds_regridded.to_array().isel(variable=0).drop('variable')
 

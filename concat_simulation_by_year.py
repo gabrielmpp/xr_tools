@@ -97,7 +97,7 @@ if __name__ == '__main__':
     if sim_type == 'upscale':
         basepath = '/gws/nopw/j04/upscale/gmpp/convzones/'
     elif sim_type == 'cmip6':
-        basepath = '/work/xfc/vol4/user_cache/gmpp/'
+        basepath = '/work/xfc/vol6/user_cache/gmpp/'
 
     for model in models:
         scan_folder(basepath + model)
